@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "wouter";
 import { 
   useGetFirmware, getGetFirmwareQueryKey,
   useGetScanResults, getGetScanResultsQueryKey,
-  useGetExtractedFiles, getGetExtractedFilesQueryKey
+  useGetExtractedFiles, getGetExtractedFilesQueryKey,
+  useGetCveMatches, getGetCveMatchesQueryKey
 } from "@workspace/api-client-react";
 import type { ScanResult } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,6 +24,7 @@ export default function ScanDetails() {
   const firmwareId = parseInt(params.firmwareId || "0", 10);
 
   const queryClient = useQueryClient();
+  const [showDebug, setShowDebug] = useState(false);
 
   const { data: firmware, isLoading: loadingFw } = useGetFirmware(firmwareId, {
     query: { enabled: !!firmwareId, queryKey: getGetFirmwareQueryKey(firmwareId) }
@@ -43,6 +45,10 @@ export default function ScanDetails() {
 
   const { data: files, isLoading: loadingFiles } = useGetExtractedFiles(firmwareId, {
     query: { enabled: !!firmwareId, queryKey: getGetExtractedFilesQueryKey(firmwareId) }
+  });
+
+  const { data: cves, isLoading: loadingCves } = useGetCveMatches(firmwareId, {
+    query: { enabled: !!firmwareId, queryKey: getGetCveMatchesQueryKey(firmwareId) }
   });
 
   if (!firmwareId) return <div>Invalid ID</div>;
@@ -104,6 +110,27 @@ export default function ScanDetails() {
                   </Badge>
                 )}
               </div>
+
+                <div>
+                  <div className="mt-4">
+                    <Button variant="ghost" onClick={() => setShowDebug(s => !s)}>
+                      {showDebug ? "Hide Raw JSON" : "Show Raw JSON"}
+                    </Button>
+                  </div>
+
+                  {showDebug && (
+                    <Card className="mt-4">
+                      <CardHeader>
+                        <CardTitle className="font-mono text-sm">Raw API Data</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <pre className="text-xs overflow-auto max-h-96">
+          {JSON.stringify({ firmware, scanResults, files, cves }, null, 2)}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
             </div>
           </CardHeader>
           <CardContent className="p-6">

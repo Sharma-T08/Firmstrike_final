@@ -108,46 +108,52 @@ The goal is to compress what normally takes hours of manual firmware reverse eng
 
 ## 📂 Project Structure
 
+> **Note:** this section was corrected on 2026-08-14 — the previous version described an `artifacts/` and `lib/` layout that no longer matches the repo. See [Known Issues](#-known-issues--audit-findings) for why that mattered.
+
 ```
 FirmStrike/
-├── artifacts/
-│   ├── viv-scanner/                 # React frontend (cyberpunk dark theme)
-│   │   └── src/
-│   │       ├── pages/
-│   │       │   ├── Dashboard.tsx
-│   │       │   ├── FirmwareLibrary.tsx
-│   │       │   ├── ScanDetails.tsx
-│   │       │   ├── SecurityAnalysis.tsx
-│   │       │   ├── CveIntelligence.tsx
-│   │       │   ├── MalwareDetection.tsx
-│   │       │   ├── QemuEmulation.tsx
-│   │       │   ├── ReportsAi.tsx
-│   │       │   ├── Login.tsx
-│   │       │   └── Register.tsx
-│   │       └── components/
-│   │           ├── Layout.tsx        # Sidebar + main content shell
-│   │           ├── theme-provider.tsx
-│   │           └── ui/               # shadcn/ui components
-│   │
-│   └── api-server/
-│       └── src/
-│           └── routes/
-│               ├── auth.ts
-│               ├── firmware.ts
-│               ├── scanner.ts
-│               ├── security.ts
-│               ├── cve.ts
-│               ├── malware.ts
-│               ├── qemu.ts
-│               ├── reports.ts
-│               └── dashboard.ts
+├── frontend/                        # React frontend (cyberpunk dark theme) — workspace package @workspace/frontend
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── FirmwareLibrary.tsx
+│   │   │   ├── ScanDetails.tsx
+│   │   │   ├── SecurityAnalysis.tsx
+│   │   │   ├── CveIntelligence.tsx
+│   │   │   ├── MalwareDetection.tsx
+│   │   │   ├── QemuEmulation.tsx
+│   │   │   ├── ReportsAi.tsx
+│   │   │   ├── Login.tsx
+│   │   │   └── Register.tsx
+│   │   └── components/
+│   │       ├── Layout.tsx           # Sidebar + main content shell
+│   │       ├── theme-provider.tsx
+│   │       └── ui/                  # shadcn/ui components
+│   └── api-client/                  # @workspace/api-client-react — generated React Query hooks + Zod schemas
 │
-├── lib/
-│   ├── api-spec/
-│   │   └── openapi.yaml             # Source-of-truth OpenAPI contract
-│   ├── api-client-react/            # Generated React Query hooks + Zod schemas
-│   └── db/
-│       └── src/schema/              # Drizzle ORM schema (users, firmware, scans, security, index)
+├── backend/                         # Express API server — workspace package @workspace/backend
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── auth.ts
+│   │   │   ├── firmware.ts
+│   │   │   ├── scanner.ts
+│   │   │   ├── security.ts
+│   │   │   ├── cve.ts
+│   │   │   ├── malware.ts
+│   │   │   ├── qemu.ts
+│   │   │   ├── reports.ts
+│   │   │   └── dashboard.ts
+│   │   ├── services/                # scan-pipeline, python-scanner client, gemini, pdf, etc.
+│   │   ├── lib/                     # logger, data-dir path helpers
+│   │   └── middlewares/             # currently empty — see Known Issues
+│   ├── api-zod/                     # @workspace/api-zod — Zod validation schemas
+│   ├── api-spec/                    # @workspace/api-spec — openapi.yaml (source-of-truth contract) + Orval codegen
+│   └── db/                          # @workspace/db — Drizzle ORM schema (users, firmware, scans, security, index)
+│
+├── python-scanner/                  # Standalone FastAPI microservice (binwalk/static analysis) — NOT a pnpm workspace package, run separately
+│   ├── app.py
+│   ├── scanner.py
+│   └── requirements.txt
 │
 ├── scripts/                         # Workspace-level scripts
 ├── attached_assets/                 # Static/reference assets
@@ -203,6 +209,7 @@ FirmStrike/
 - **Node.js 24+**
 - **pnpm** — this workspace is pnpm-only. The `preinstall` script actively blocks `npm`/`yarn` installs and will exit with an error telling you to use pnpm.
 - A running **PostgreSQL** instance
+- **Python 3.11+** with `pip` — required to run `python-scanner/`, the FastAPI microservice the backend calls out to for extraction/static analysis (see below). It is not a pnpm workspace package and has its own dependencies.
 
 ### Installation
 
@@ -223,17 +230,23 @@ Create a `.env` file (or export these in your shell) before running the API serv
 
 ### Running Locally
 
-Run the frontend and API server in separate terminals:
+The app is three separate processes. All three must be running for scans to work — the backend's scan pipeline (`backend/src/services/scan-pipeline.ts`) calls the Python service over HTTP and will fail every scan if it isn't up.
 
 ```bash
-# Terminal 1 — API server (http://localhost:8080)
+# Terminal 1 — Python scanner (http://localhost:8010)
+cd python-scanner
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8010
+
+# Terminal 2 — API server (http://localhost:8080)
 pnpm --filter @workspace/backend run dev
 
-# Terminal 2 — React frontend (http://localhost:25439)
+# Terminal 3 — React frontend (http://localhost:25439)
 pnpm --filter @workspace/frontend run dev
 ```
 
-Then open **http://localhost:25439** in your browser.
+Then open **http://localhost:25439** in your browser. The backend looks for the Python service at `PYTHON_SCANNER_URL` (defaults to `http://127.0.0.1:8010` — set it in `backend/.env` if you run the scanner elsewhere).
 
 ---
 
@@ -338,9 +351,25 @@ Have an idea or priority you'd like bumped up? Open an issue!
 
 ---
 
-## ⚠️ Known Limitations
+## ⚠️ Known Issues / Audit Findings
 
-- Some scan flows currently simulate progression via `setTimeout` rather than performing live analysis — this is being replaced incrementally.
+_Logged 2026-08-14 from a full read-through of the repo. Fix status: unresolved unless noted._
+
+**Broken / high-impact:**
+
+- **Root `typecheck`/`build` silently skip the app.** `package.json`'s `typecheck` script filters `pnpm -r --filter "./artifacts/**"`, but there is no `artifacts/` directory — the real packages live at `frontend/` and `backend/`. The filter matches zero packages, so `pnpm run typecheck` and `pnpm run build` only ever run `typecheck:libs` (the DB/zod libs) and silently skip typechecking the frontend and backend. Fix by pointing the filter at `./frontend` and `./backend` (or dropping the filter and using `-r --if-present`).
+- **`backend/src/lib/paths.ts` resolves the data directory two levels too high.** `workspaceRoot` is computed as `path.resolve(artifactDir, "../../../..")` (4 levels up) from the bundled `backend/dist/server.mjs`, but `dist/` sits only 2 levels below the repo root (`backend/dist` → `backend` → repo root). This walks 2 directories past the repo, so uploaded firmware, extraction output, and reports get written outside the project (or fail on permissions) instead of into `<repo>/data/...`. Should be `"../.."`.
+- **No authentication middleware exists.** `backend/src/middlewares/` contains only a `.gitkeep`. `verifyToken()` in `auth.ts` is called in exactly one place (`/auth/me`) — every other route (`firmware.ts`, `scanner.ts`, `security.ts`, `qemu.ts`, `reports.ts`, `dashboard.ts`) is reachable with no session or token check at all.
+- **Auth tokens are forgeable.** `generateToken()`/`verifyToken()` in `auth.ts` just base64-encode `${userId}:${timestamp}:viv_token` — there's no signature or secret involved (`SESSION_SECRET` is defined in `.env` but never imported by `auth.ts`), so anyone can mint a valid-looking token for any user ID by hand.
+- **Passwords are hashed with unsalted SHA-256.** `hashPassword()` uses `sha256(password + "viv_salt")` — a fixed, hardcoded salt shared by every user, with a fast general-purpose hash. This is brute-forceable/rainbow-tableable; use `bcrypt`/`argon2` (`bcrypt` types were already present in earlier deploy configs) with a per-user salt instead.
+- **The registration OTP is returned in the API response.** `POST /auth/register` includes the plaintext OTP in its JSON response ("For now return it for testing" per the inline comment) instead of only sending it out-of-band, which defeats the purpose of the OTP step if left in place.
+
+**Housekeeping:**
+
+- **`.gitignore` doesn't exclude the Python virtualenv.** `python-scanner/.venv/` (1,200+ files, including compiled binaries) is tracked in git — add `.venv/` to `.gitignore` and run `git rm -r --cached python-scanner/.venv`.
+- **Dead files in `python-scanner/`:** `scanner_backup.py` is a stale, shorter duplicate of `scanner.py`, and `python-scanner.ts` is an exact copy of `backend/src/services/python-scanner.ts` stranded in the Python folder (no `package.json`/`tsconfig.json` there to ever build it). Both are safe to delete.
+- **Secrets present in `backend/.env`:** a live Postgres connection string (with embedded password) and a Gemini API key are checked into the working tree. `.gitignore` does correctly keep `.env` out of git history, but both credentials should be rotated as a precaution and never included when sharing/zipping the project.
+- Some scan flows still simulate progression via `setTimeout` rather than performing fully live analysis — being replaced incrementally as the Python scanner integration matures.
 - APIs and schemas may change without notice while the project is in active development.
 - No automated test suite yet.
 

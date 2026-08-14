@@ -578,6 +578,13 @@ export async function generateAiReport(
   }
 
   const prompt = buildPrompt(ctx);
+  logger.info(
+  {
+    promptLength: prompt.length,
+    model: GEMINI_MODEL
+  },
+  "Gemini prompt prepared"
+  );
 
   const MAX_RETRIES = 2;
 

@@ -110,9 +110,31 @@ export type RunPythonScannerOptions = {
   extractPath: string;
 };
 
-function normalizeWindowsPath(value: string): string {
-  return path.resolve(value);
-}
+/*
+ * NOTE:
+ * We intentionally do NOT run these paths through
+ * path.resolve() here.
+ *
+ * path.resolve() on Windows treats a leading "/" as
+ * "root of the current working drive" — so a stale
+ * POSIX-style path like:
+ *
+ *   /home/vivek/Desk/data/firmware/250_x.img
+ *
+ * silently gets rewritten to:
+ *
+ *   D:\home\vivek\Desk\data\firmware\250_x.img
+ *
+ * which is not a real path anywhere and causes 404s
+ * from the Python scanner.
+ *
+ * filePath and extractPath are expected to already be
+ * correct, OS-native absolute paths — they must be
+ * built via firmwareUploadPath() / firmwareExtractPath()
+ * in lib/paths.ts (using path.join/path.resolve against
+ * the current workspaceRoot) by the caller, not "fixed
+ * up" here.
+ */
 
 export async function runPythonScanner(
   options: RunPythonScannerOptions,
@@ -133,8 +155,8 @@ export async function runPythonScanner(
   extraction: PythonScannerResult["extraction"];
   sbom: PythonScannerResult["sbom"];
 }> {
-  const filePath = normalizeWindowsPath(options.filePath);
-  const extractPath = normalizeWindowsPath(options.extractPath);
+  const filePath = options.filePath;
+  const extractPath = options.extractPath;
 
   console.log("");
   console.log("========================================");

@@ -14,6 +14,7 @@ import {
 import { eq } from "drizzle-orm";
 
 import { runScanPipeline } from "../services/scan-pipeline.js";
+import { firmwareUploadPath } from "../lib/paths.js";
 import {
   analyzeBinary,
   pickBinaryTarget,
@@ -82,9 +83,15 @@ router.post(
 
       /*
        * A file must have been uploaded.
+       *
+       * NOTE:
+       * We check fw.name (used to reconstruct the upload
+       * path) rather than fw.filePath, since filePath is no
+       * longer trusted downstream — the actual file location
+       * is always recomputed fresh via firmwareUploadPath().
        */
 
-      if (!fw.filePath) {
+      if (!fw.name) {
         res.status(400).json({
           error:
             "Firmware file not uploaded. Use /firmware/upload first.",
@@ -454,7 +461,7 @@ router.post(
           );
 
       if (
-        !fw?.filePath
+        !fw?.name
       ) {
         res.status(404).json({
           error:
@@ -463,6 +470,14 @@ router.post(
 
         return;
       }
+
+      /*
+       * NOTE:
+       * Recomputed fresh, same as scan-pipeline.ts, instead
+       * of trusting fw.filePath from the DB.
+       */
+      const resolvedFilePath =
+        firmwareUploadPath(fw.id, fw.name);
 
       const {
         filePath:
@@ -491,9 +506,9 @@ router.post(
           pickBinaryTarget(
             fw.extractPath ??
               "",
-            [fw.filePath],
+            [resolvedFilePath],
           ) ??
-          fw.filePath;
+          resolvedFilePath;
       }
 
       const result =
